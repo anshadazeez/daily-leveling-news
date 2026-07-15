@@ -1,0 +1,1 @@
+ALTER TABLE `articles` ADD `sourceName` varchar(255);
