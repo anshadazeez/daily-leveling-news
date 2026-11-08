@@ -1,297 +1,224 @@
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
+  ArrowRight,
   Atom,
   Banknote,
-  BarChart3,
   BookOpenCheck,
   BrainCircuit,
   GraduationCap,
+  Menu,
   Search,
-  Settings,
   Sparkles,
-  TrendingUp,
-  Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ArticleCard from "./ArticleCard";
 import ReadViewModal from "./ReadViewModal";
 import { mockArticles, type ArticleCategory, type PremiumArticle } from "./mockData";
 import { getLiveArticles } from "./news-api";
 
-const CATEGORIES: Array<{
-  name: ArticleCategory;
-  icon: LucideIcon;
-  color: string;
-  accent: string;
-}> = [
-  {
-    name: "Technology",
-    icon: BrainCircuit,
-    color: "from-cyan-300 to-blue-500",
-    accent: "text-cyan-200",
-  },
-  {
-    name: "Science",
-    icon: Atom,
-    color: "from-emerald-300 to-cyan-500",
-    accent: "text-emerald-200",
-  },
-  {
-    name: "Research",
-    icon: BookOpenCheck,
-    color: "from-violet-300 to-fuchsia-500",
-    accent: "text-violet-200",
-  },
-  {
-    name: "Finance",
-    icon: Banknote,
-    color: "from-lime-300 to-emerald-500",
-    accent: "text-lime-200",
-  },
-  {
-    name: "Economics",
-    icon: BarChart3,
-    color: "from-amber-300 to-rose-500",
-    accent: "text-amber-200",
-  },
-  {
-    name: "IAS Prep",
-    icon: GraduationCap,
-    color: "from-sky-300 to-indigo-500",
-    accent: "text-sky-200",
-  },
+const CATEGORIES: Array<{ name: ArticleCategory; icon: LucideIcon }> = [
+  { name: "Technology", icon: BrainCircuit },
+  { name: "Science", icon: Atom },
+  { name: "Research", icon: BookOpenCheck },
+  { name: "Finance", icon: Banknote },
+  { name: "Economics", icon: Banknote },
+  { name: "IAS Prep", icon: GraduationCap },
 ];
+
+function relativeUpdate(time: Date | null) {
+  if (!time) return "Loading latest sources";
+  const minutes = Math.max(0, Math.floor((Date.now() - time.getTime()) / 60_000));
+  return minutes < 1 ? "Updated just now" : `Updated ${minutes} min ago`;
+}
 
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<ArticleCategory>("Technology");
   const [selectedArticle, setSelectedArticle] = useState<PremiumArticle | null>(null);
   const [liveArticles, setLiveArticles] = useState<PremiumArticle[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasLiveError, setHasLiveError] = useState(false);
+
+  const refreshArticles = useCallback(async () => {
+    setIsLoading(true);
+    setHasLiveError(false);
+    try {
+      const articles = await getLiveArticles();
+      setLiveArticles(articles);
+      setLastUpdated(new Date());
+    } catch {
+      setHasLiveError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    getLiveArticles(controller.signal)
-      .then((nextArticles) => setLiveArticles(nextArticles))
-      .catch((error: unknown) => console.warn("[news] Falling back to prepared articles:", error));
-    return () => controller.abort();
-  }, []);
+    void refreshArticles();
+  }, [refreshArticles]);
 
   const articles = useMemo(() => {
     const source = liveArticles.length ? liveArticles : mockArticles;
-    return [...source].sort(
-      (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
-    );
+    return [...source].sort((first, second) => Date.parse(second.publishedAt) - Date.parse(first.publishedAt));
   }, [liveArticles]);
 
-  const filteredArticles = articles
-    .filter((article) => article.category === activeCategory)
-    .filter((article) => {
-      const query = searchQuery.trim().toLowerCase();
-      if (!query) return true;
-
-      return [article.title, article.description, article.fullContent, article.source, ...article.tags]
+  const filteredArticles = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return articles
+      .filter((article) => article.category === activeCategory)
+      .filter((article) => !query || [article.title, article.description, article.source, ...article.tags]
         .join(" ")
         .toLowerCase()
-        .includes(query);
-    });
+        .includes(query));
+  }, [activeCategory, articles, searchQuery]);
 
-  const currentCategory = CATEGORIES.find((category) => category.name === activeCategory)!;
-  const CurrentIcon = currentCategory.icon;
+  const leadArticle = filteredArticles[0];
+  const remainingArticles = filteredArticles.slice(1);
+  const liveLabel = liveArticles.length ? relativeUpdate(lastUpdated) : "Prepared briefing";
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#05070d] text-white">
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(244,63,94,0.13),transparent_34%),linear-gradient(135deg,#05070d_0%,#0f172a_54%,#111827_100%)]" />
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/40 to-transparent" />
-      </div>
-
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/55 backdrop-blur-2xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <button
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="flex min-w-0 items-center gap-3 text-left"
-            aria-label="Back to top"
-          >
-            <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 shadow-lg shadow-cyan-500/10">
-              <Sparkles className="h-5 w-5 text-cyan-200" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-2xl font-black tracking-normal text-white">
-                Daily Insight
-              </h1>
-              <p className="truncate text-xs font-medium text-slate-400">
-                Free-source news, research, markets, and exam-ready context
-              </p>
-            </div>
+    <div className="min-h-[100dvh] bg-[#f4f2ed] text-slate-950">
+      <header className="border-b border-slate-300 bg-[#f4f2ed]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
+          <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} className="flex items-center gap-3 text-left">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-slate-950 text-white"><Sparkles className="h-4 w-4" /></span>
+            <span>
+              <span className="block font-serif text-xl font-black tracking-[-0.045em]">Daily Insight</span>
+              <span className="block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">The daily briefing</span>
+            </span>
           </button>
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setActiveCategory("IAS Prep")}
-              className="rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
-              aria-label="Open IAS prep lane"
-            >
-              <Settings className="h-5 w-5" />
-            </Button>
-
-            <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 sm:flex">
-              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-300 to-emerald-300" />
-              <span className="text-sm font-semibold text-slate-100">Daily Reader</span>
-            </div>
-          </div>
+          <nav className="hidden items-center gap-6 text-sm font-semibold text-slate-600 md:flex" aria-label="Primary navigation">
+            <a href="#briefing" className="hover:text-blue-700">Briefing</a>
+            <a href="#stories" className="hover:text-blue-700">Stories</a>
+            <a href="#sources" className="hover:text-blue-700">Sources</a>
+          </nav>
+          <button type="button" className="grid h-10 w-10 place-items-center rounded-full border border-slate-300 text-slate-800 md:hidden" aria-label="Open navigation">
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
-          <div>
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-100">
-              <Zap className="h-4 w-4" />
-              arXiv, NewsAPI, and Alpha Vantage ready
+      <main className="mx-auto max-w-7xl px-5 pb-16 sm:px-8">
+        <section id="briefing" className="border-b border-slate-300 py-10 sm:py-14">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
+            <div>
+              <p className="text-sm font-bold text-blue-700">{liveLabel}</p>
+              <h1 className="mt-3 max-w-4xl text-balance font-serif text-5xl font-black leading-[0.94] tracking-[-0.055em] sm:text-7xl">
+                Know what matters before the day gets loud.
+              </h1>
+              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
+                A source-aware briefing for technology, markets, science, economics, and policy.
+              </p>
             </div>
-            <h2 className="max-w-4xl text-4xl font-black leading-tight text-white sm:text-6xl">
-              Premium daily intelligence for tech, economics, science, and policy.
-            </h2>
-            <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-300">
-              Open any article to read the full source text, switch into a clean summary, or
-              study 3 to 5 key takeaways without leaving the dashboard.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-5 backdrop-blur-2xl">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-slate-400">
-              Today&apos;s coverage
-            </p>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              <div>
-                <p className="text-3xl font-black text-white">{articles.length}</p>
-                <p className="text-xs text-slate-400">items</p>
-              </div>
-              <div>
-                <p className="text-3xl font-black text-white">{CATEGORIES.length}</p>
-                <p className="text-xs text-slate-400">lanes</p>
-              </div>
-              <div>
-                <p className="text-3xl font-black text-white">3</p>
-                <p className="text-xs text-slate-400">free APIs</p>
-              </div>
+            <div className="border-t border-slate-300 pt-5 text-sm leading-6 text-slate-600 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+              <p className="font-semibold text-slate-950">{articles.length} stories in today&apos;s collection.</p>
+              <p className="mt-2">Every story links back to the original publisher. RSS coverage is shown as an excerpt, not a full article.</p>
             </div>
           </div>
         </section>
 
-        <section className="sticky top-[77px] z-30 mt-8 space-y-4 border-y border-white/10 bg-slate-950/70 py-4 backdrop-blur-2xl">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-            <Input
-              placeholder="Search AI, inflation, markets, governance, research..."
-              className="h-12 rounded-2xl border-white/15 bg-white/10 pl-12 text-white placeholder:text-slate-500 focus:border-cyan-300"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
-          </div>
-
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {CATEGORIES.map((category) => {
-              const Icon = category.icon;
-              const isActive = activeCategory === category.name;
-
+        <section className="border-b border-slate-300 py-5" aria-label="Browse topics">
+          <div className="flex items-center gap-3 overflow-x-auto pb-1">
+            {CATEGORIES.map(({ name, icon: Icon }) => {
+              const isActive = activeCategory === name;
               return (
                 <button
-                  key={category.name}
-                  onClick={() => setActiveCategory(category.name)}
-                  className={`flex min-w-fit items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold transition-all ${
-                    isActive
-                      ? `border-transparent bg-gradient-to-r ${category.color} text-slate-950 shadow-lg`
-                      : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+                  key={name}
+                  type="button"
+                  onClick={() => setActiveCategory(name)}
+                  className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                    isActive ? "bg-slate-950 text-white" : "bg-transparent text-slate-600 hover:bg-slate-200 hover:text-slate-950"
                   }`}
+                  aria-pressed={isActive}
                 >
-                  <Icon className="h-4 w-4" />
-                  {category.name}
+                  <Icon className="h-4 w-4" />{name}
                 </button>
               );
             })}
           </div>
         </section>
 
-        <section className="py-10">
-          <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-            <div>
-              <div className={`mb-2 flex items-center gap-2 ${currentCategory.accent}`}>
-                <CurrentIcon className="h-5 w-5" />
-                <span className="text-sm font-bold uppercase tracking-[0.2em]">
-                  {activeCategory}
-                </span>
-              </div>
-              <h3 className="text-3xl font-black text-white">Curated Updates</h3>
-            </div>
-            <p className="max-w-xl text-sm leading-6 text-slate-400">
-              Each card uses a full-content field, a verified summary field, and structured
-              bullet points so future AI summarization can stay grounded in source text.
-            </p>
-          </div>
-
-          {filteredArticles.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] py-16 text-center backdrop-blur-xl">
-              <Zap className="mx-auto mb-4 h-12 w-12 text-slate-500" />
-              <p className="text-lg text-slate-300">
-                No articles found. Try another search or category.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {filteredArticles.map((article, index) => (
-                <ArticleCard
-                  key={article.id}
-                  id={index}
-                  title={article.title}
-                  description={article.description}
-                  source={article.source}
-                  publishedAt={new Date(article.publishedAt)}
-                  imageUrl={article.imageUrl}
-                  category={article.category}
-                  url={article.url}
-                  readingTimeMinutes={article.readingTimeMinutes}
-                  onOpen={() => setSelectedArticle(article)}
-                />
-              ))}
+        <section className="py-7 sm:py-10">
+          <label className="relative block max-w-xl">
+            <span className="sr-only">Search today&apos;s stories</span>
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search this briefing"
+              className="h-12 w-full rounded-full border border-slate-300 bg-white py-2 pl-12 pr-4 text-slate-950 placeholder:text-slate-500 focus:border-blue-700 focus:outline-none"
+            />
+          </label>
+          {hasLiveError && (
+            <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-3 border-l-2 border-blue-700 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+              <span>Live sources are temporarily unavailable. You are reading the prepared briefing.</span>
+              <button type="button" onClick={() => void refreshArticles()} className="font-bold underline underline-offset-4">Try again</button>
             </div>
           )}
         </section>
 
-        <section className="border-t border-white/10 py-10">
-          <div className="mb-6 flex items-center gap-2">
-            <TrendingUp className="h-6 w-6 text-cyan-200" />
-            <h3 className="text-2xl font-black text-white">High-Signal Queue</h3>
-          </div>
-          <div className="grid gap-3">
-            {articles.slice(0, 5).map((article, index) => (
-              <button
-                key={article.id}
-                onClick={() => setSelectedArticle(article)}
-                className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-left backdrop-blur-xl transition-all hover:border-cyan-300/40 hover:bg-white/[0.08]"
-              >
-                <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-cyan-300/10 text-sm font-black text-cyan-100">
-                  {index + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-1 font-bold text-white group-hover:text-cyan-100">
-                    {article.title}
-                  </span>
-                  <span className="mt-1 block text-sm text-slate-400">
-                    {article.category} / {article.sourceHook.provider}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
+        {isLoading && !liveArticles.length ? <LoadingBriefing /> : leadArticle ? (
+          <>
+            <section className="grid gap-8 border-b border-slate-300 pb-10 lg:grid-cols-[1.45fr_0.55fr] lg:gap-12">
+              <article>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-700">Lead story · {leadArticle.category}</p>
+                <button type="button" onClick={() => setSelectedArticle(leadArticle)} className="mt-4 text-left">
+                  <h2 className="text-balance font-serif text-4xl font-black leading-[0.98] tracking-[-0.045em] text-slate-950 transition-colors hover:text-blue-700 sm:text-6xl">{leadArticle.title}</h2>
+                  <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-600">{leadArticle.description}</p>
+                  <span className="mt-6 inline-flex items-center gap-2 font-bold text-blue-700">Read the brief <ArrowRight className="h-4 w-4" /></span>
+                </button>
+              </article>
+              <aside id="sources" className="border-t border-slate-300 pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">How to read this</p>
+                <p className="mt-4 font-serif text-2xl font-black leading-tight">Fast context. Clear sources.</p>
+                <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-600">
+                  <li>Open a brief for the source excerpt and key points.</li>
+                  <li>Use the publisher link for the complete original reporting.</li>
+                  <li>Switch topics without losing your place in the briefing.</li>
+                </ul>
+              </aside>
+            </section>
+
+            <section id="stories" className="py-10">
+              <div className="flex items-end justify-between gap-4 border-b border-slate-300 pb-4">
+                <div>
+                  <p className="text-sm font-bold text-blue-700">{activeCategory}</p>
+                  <h2 className="mt-1 font-serif text-3xl font-black tracking-[-0.04em]">More to read</h2>
+                </div>
+                <p className="text-sm text-slate-500">{remainingArticles.length} stories</p>
+              </div>
+              <div className="mt-6 grid gap-x-8 gap-y-8 md:grid-cols-2 xl:grid-cols-3">
+                {remainingArticles.map((article, index) => (
+                  <ArticleCard
+                    key={article.id}
+                    id={index}
+                    title={article.title}
+                    description={article.description}
+                    source={article.source}
+                    publishedAt={new Date(article.publishedAt)}
+                    category={article.category}
+                    url={article.url}
+                    readingTimeMinutes={article.readingTimeMinutes}
+                    onOpen={() => setSelectedArticle(article)}
+                  />
+                ))}
+              </div>
+            </section>
+          </>
+        ) : <EmptyBriefing category={activeCategory} query={searchQuery} />}
       </main>
 
       <ReadViewModal article={selectedArticle} onClose={() => setSelectedArticle(null)} />
     </div>
   );
+}
+
+function LoadingBriefing() {
+  return <div className="animate-pulse border-y border-slate-300 py-10" aria-busy="true" aria-label="Loading latest stories"><div className="h-4 w-28 bg-slate-300" /><div className="mt-5 h-16 max-w-3xl bg-slate-300" /><div className="mt-8 grid gap-6 md:grid-cols-3">{[1, 2, 3].map((item) => <div key={item} className="h-48 border-t border-slate-300 pt-5"><div className="h-5 w-20 bg-slate-300" /><div className="mt-4 h-20 bg-slate-200" /></div>)}</div></div>;
+}
+
+function EmptyBriefing({ category, query }: { category: string; query: string }) {
+  return <section className="border-y border-slate-300 py-16 text-center"><p className="text-sm font-bold text-blue-700">No matching stories</p><h2 className="mt-2 font-serif text-3xl font-black">Try another topic or search.</h2><p className="mx-auto mt-4 max-w-md text-slate-600">There are no {category} stories matching “{query}” in this briefing.</p></section>;
 }
